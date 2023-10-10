@@ -102,6 +102,23 @@ allocpid()
   return pid;
 }
 
+
+uint64
+usdprocnum(void){
+  struct proc *p;
+  uint64 count = 0;
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state != UNUSED) {
+      count++;
+    }
+    release(&p->lock);
+  }
+  return count;
+}
+
+
+
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
 // and return with p->lock held.
@@ -307,7 +324,7 @@ fork(void)
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
-
+  np->trace_mask = p->trace_mask;
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;

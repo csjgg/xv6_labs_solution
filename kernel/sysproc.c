@@ -5,6 +5,39 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 nowinfo;
+  argaddr(0, &nowinfo);
+  struct proc* nowproc = myproc();
+  if(nowproc == 0){
+    return -1;
+  }
+  struct sysinfo sinfo;
+  sinfo.freemem = getfmemsize();
+  sinfo.nproc = usdprocnum();
+  if(copyout(nowproc->pagetable, nowinfo, (char *)&sinfo, sizeof(sinfo)) < 0)
+    return -1;
+  return 0;
+}
+
+
+uint64
+sys_trace(void)
+{ 
+  int mask;
+  argint(0,&mask);
+  struct proc* nowproc = myproc();
+  if(nowproc == 0){
+    return -1;
+  }
+  nowproc->trace_mask = mask;
+  return 0;
+}
 
 uint64
 sys_exit(void)

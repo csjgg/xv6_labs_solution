@@ -1,0 +1,7 @@
+usertarp() in kernel/trap.c
+a7 = 0x7  represent SYS_exec
+user-mode
+80001ff8: 00002683   lw	a3,0(zero) # 0 <_entry-0x80000000>
+a 3
+load page fault
+name: initcode pid:1
