@@ -115,6 +115,22 @@ printf(char *fmt, ...)
     release(&pr.lock);
 }
 
+
+void bktaceprint(uint64 trapfame){
+  if(PGROUNDDOWN(trapfame)!=trapfame){
+    uint64 returnaddr = *(uint64*)(trapfame-8);
+    uint64 fp = *(uint64*)(trapfame-16);
+    printf("%p\n",returnaddr);
+    bktaceprint(fp);
+  }
+}
+
+void
+backtrace(void){
+  uint64 trapfame = r_fp();
+  bktaceprint(trapfame);
+}
+
 void
 panic(char *s)
 {
@@ -123,6 +139,7 @@ panic(char *s)
   printf(s);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
+  backtrace();
   for(;;)
     ;
 }

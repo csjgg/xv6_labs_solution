@@ -29,6 +29,43 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+
+// save rigisters
+void tosaverigts(struct proc* nowproc){
+  nowproc->saverigts.a0 = nowproc->trapframe->a0;
+  nowproc->saverigts.a1 = nowproc->trapframe->a1;
+  nowproc->saverigts.a2 = nowproc->trapframe->a2;
+  nowproc->saverigts.a3 = nowproc->trapframe->a3;
+  nowproc->saverigts.a4 = nowproc->trapframe->a4;
+  nowproc->saverigts.a5 = nowproc->trapframe->a5;
+  nowproc->saverigts.a6 = nowproc->trapframe->a6;
+  nowproc->saverigts.a7 = nowproc->trapframe->a7;
+  nowproc->saverigts.s0 = nowproc->trapframe->s0;
+  nowproc->saverigts.s1 = nowproc->trapframe->s1;
+  nowproc->saverigts.s2 = nowproc->trapframe->s2;
+  nowproc->saverigts.s3 = nowproc->trapframe->s3;
+  nowproc->saverigts.s4 = nowproc->trapframe->s4;
+  nowproc->saverigts.s5 = nowproc->trapframe->s5;
+  nowproc->saverigts.s6 = nowproc->trapframe->s6;
+  nowproc->saverigts.s7 = nowproc->trapframe->s7;
+  nowproc->saverigts.s8 = nowproc->trapframe->s8;
+  nowproc->saverigts.s9 = nowproc->trapframe->s9;
+  nowproc->saverigts.s10 = nowproc->trapframe->s10;
+  nowproc->saverigts.s11 = nowproc->trapframe->s11;
+  nowproc->saverigts.t0 = nowproc->trapframe->t0;
+  nowproc->saverigts.t1 = nowproc->trapframe->t1;
+  nowproc->saverigts.t2 = nowproc->trapframe->t2;
+  nowproc->saverigts.t3 = nowproc->trapframe->t3;
+  nowproc->saverigts.t4 = nowproc->trapframe->t4;
+  nowproc->saverigts.t5 = nowproc->trapframe->t5;
+  nowproc->saverigts.t6 = nowproc->trapframe->t6;
+  nowproc->saverigts.epc = nowproc->trapframe->epc;
+  nowproc->saverigts.ra = nowproc->trapframe->ra;
+  nowproc->saverigts.sp = nowproc->trapframe->sp;
+  nowproc->saverigts.gp = nowproc->trapframe->gp;
+  nowproc->saverigts.tp = nowproc->trapframe->tp;  
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -77,9 +114,16 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    p->tickspased++;
+    if(p->tickspased == p->alitvlnum) {
+      p->tickspased = 0;
+      p->alitvlnum = -1;
+      tosaverigts(p);
+      p->trapframe->epc = p->alfnpointer;
+    }
     yield();
-
+  }
   usertrapret();
 }
 
