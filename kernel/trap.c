@@ -65,14 +65,45 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause()==15){
+    uint64 addr = r_stval();
+    if(addr>=MAXVA){
+      setkilled(p);
+      goto end;
+    }
+    addr = PGROUNDDOWN(addr);
+    pte_t* pte = walk(p->pagetable, addr, 0);
+    uint64 pa = PTE2PA(*pte);
+    if(pa == 0){
+      panic("usertrap(): page fault222");
+    }
+    int flags = PTE_FLAGS(*pte);
+    if(flags&PTE_COW){
+      uint64 pa1 = retnewpage(pa);
+      if(pa1==pa){
+        *pte&=~PTE_COW;
+        *pte|=PTE_W;
+      }else{
+        if(pa1==0){
+          setkilled(p);
+        }else{
+          flags&=~PTE_COW;
+          flags|=PTE_W;
+          uvmunmap(p->pagetable, addr, 1, 0);
+          mappages(p->pagetable, addr, PGSIZE, pa1, flags);
+        }
+      }
+    }else{
+      setkilled(p);
+    }
   } else if((which_dev = devintr()) != 0){
-    // ok
+    // okpte
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     setkilled(p);
   }
-
+  end:
   if(killed(p))
     exit(-1);
 
