@@ -103,6 +103,30 @@ e1000_transmit(struct mbuf *m)
   // a pointer so that it can be freed after sending.
   //
   
+  acquire(&e1000_lock);
+  uint16 t_datum = (uint16)regs[E1000_TDT];
+  uint16 h_datum = (uint16)regs[E1000_TDH];
+  if(t_datum >= TX_RING_SIZE || (t_datum + 1) % TX_RING_SIZE == h_datum){
+    printf("t_datum %d too big\n",t_datum);
+    release(&e1000_lock);
+    return -1;
+  }
+  if(tx_ring[t_datum].status != E1000_TXD_STAT_DD){
+    printf("Hasn't finished the corresponding previous transmission request\n");
+    release(&e1000_lock);
+    return -1;
+  }
+  if(tx_mbufs[t_datum]!=0){
+    mbuffree(tx_mbufs[t_datum]);
+  }
+  tx_ring[t_datum].addr = (uint64)m->head;
+  tx_ring[t_datum].length = m->len;
+  tx_ring[t_datum].cmd = E1000_TXD_CMD_RS | E1000_TXD_CMD_EOP;
+  rx_ring[t_datum].status = 0;
+  tx_mbufs[t_datum] = m;
+  regs[E1000_TDT] = (t_datum+1) % TX_RING_SIZE;
+  __sync_synchronize();
+  release(&e1000_lock);
   return 0;
 }
 
@@ -115,6 +139,24 @@ e1000_recv(void)
   // Check for packets that have arrived from the e1000
   // Create and deliver an mbuf for each packet (using net_rx()).
   //
+  acquire(&e1000_lock);
+  int index = ((uint16)regs[E1000_RDT] + 1) % RX_RING_SIZE;
+  while(rx_ring[index].status & E1000_RXD_STAT_DD){
+    struct mbuf *m = rx_mbufs[index];
+    m->len = rx_ring[index].length;
+    __sync_synchronize();
+    release(&e1000_lock);
+    net_rx(m);
+    acquire(&e1000_lock);
+    rx_mbufs[index] = mbufalloc(0);
+    if (!rx_mbufs[index])
+      panic("e1000");
+    rx_ring[index].addr = (uint64) rx_mbufs[index]->head;
+    rx_ring[index].status = 0;
+    regs[E1000_RDT] = index;
+    index = ((uint16)regs[E1000_RDT] + 1) % RX_RING_SIZE;
+  }
+  release(&e1000_lock);
 }
 
 void
