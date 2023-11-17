@@ -139,7 +139,7 @@ found:
     release(&p->lock);
     return 0;
   }
-
+  memset(&p->vmas,0 ,sizeof(p->vmas));
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -274,6 +274,41 @@ growproc(int n)
   return 0;
 }
 
+
+
+int
+mmmuvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  char *mem;
+
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walk(old, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0){
+      // panic("uvmcopy: page not present");
+      continue;
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if((mem = kalloc()) == 0)
+      goto err;
+    memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+  }
+  return 0;
+
+ err:
+  uvmunmap(new, 0, i / PGSIZE, 1);
+  return -1;
+}
+
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -287,9 +322,20 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  for(int i = 0; i < 16; i++){
+    if(p->vmas[i].used == 1){
+      np->vmas[i].used = 1;
+      np->vmas[i].addr = p->vmas[i].addr;
+      np->vmas[i].fd = p->vmas[i].fd;
+      np->vmas[i].flags = p->vmas[i].flags;
+      np->vmas[i].length = p->vmas[i].length;
+      np->vmas[i].offset = p->vmas[i].offset;
+      np->vmas[i].prot = p->vmas[i].prot;
+      filedup(np->vmas[i].fd);
+    }
+  }
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(mmmuvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -350,7 +396,23 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
-
+  
+  int i = 0;
+  for( i = 0; i < 16; i++){
+    if(p->vmas[i].used == 1){
+      uint64 addr;
+      for(addr = PGROUNDDOWN(p->vmas[i].addr); addr < p->vmas[i].addr+p->vmas[i].length; addr+=4096){
+        pte_t *ppp ;
+        if((ppp = walk(p->pagetable,addr,0))!=0){
+          if(*ppp&PTE_V){
+            filewrite(p->vmas[i].fd,addr,4096);
+            uvmunmap(p->pagetable,addr,1,1);
+          }
+        }
+      }
+      fileclose(p->vmas[i].fd);
+    }
+  }
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){

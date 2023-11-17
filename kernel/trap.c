@@ -4,7 +4,11 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fcntl.h"
 #include "defs.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,6 +71,52 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  }else if(r_scause() ==13 || r_scause() == 15){
+    // page fault
+    uint64 vaaa = r_stval();
+    int nnnnn;
+    int flllag = 0;
+    for(nnnnn = 0; nnnnn < 16; nnnnn++){
+      if(p->vmas[nnnnn].used == 1 && p->vmas[nnnnn].addr <= vaaa && p->vmas[nnnnn].length+p->vmas[nnnnn].addr>vaaa){
+        flllag = 1;
+        break;
+      }
+    }
+    if(flllag == 1){
+      struct inode* mm = p->vmas[nnnnn].fd->ip;
+      // printf("%d,",nnnnn); 
+      // printf("%x\n", p->vmas[nnnnn].fd);
+      void* pa = kalloc();
+      memset(pa, 0, PGSIZE);
+      begin_op();
+      ilock(mm);
+      readi(mm, 0, (uint64)pa, p->vmas[nnnnn].offset+PGROUNDDOWN(vaaa-p->vmas[nnnnn].addr), 4096);
+      // printf("%d\n",p->vmas[nnnnn].offset+PGROUNDDOWN(vaaa-p->vmas[nnnnn].addr));
+      // printf("vaa:%d\n",vaaa);
+      // printf("add;%d\n",p->vmas[nnnnn].addr);
+      iunlock(mm);
+      end_op();
+      int perm = 0;
+      if(p->vmas[nnnnn].prot & PROT_READ){
+        perm |=  PTE_R;
+      }
+      if(p->vmas[nnnnn].prot & PROT_WRITE){
+        perm |=  PTE_W;
+      }
+      if(p->vmas[nnnnn].prot & PROT_EXEC){
+        perm |=  PTE_X;
+      }
+      perm|=PTE_U;
+      perm|=PTE_V;
+      mappages(p->pagetable, p->vmas[nnnnn].addr+PGROUNDDOWN(vaaa-p->vmas[nnnnn].addr), 4096, (uint64)pa, perm);
+      // printf("%x\n",p->vmas[nnnnn].addr+PGROUNDDOWN(vaaa-p->vmas[nnnnn].addr));
+      // printf("vaa:%d\n",vaaa);
+      // printf("add;%d\n",p->vmas[nnnnn].addr);
+    }else{
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      setkilled(p);
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
